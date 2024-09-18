@@ -32,8 +32,8 @@ enum CellOp {
 
 type PlainBufferCell = {
   name: string;
-  value?: bigint | number | boolean | string | Uint8Array;
   type?: VariantType;
+  value?: bigint | number | boolean | string | Uint8Array;
   op?: CellOp;
   ts?: bigint;
 };
@@ -43,6 +43,23 @@ type PlainBufferRow = {
   attributes: PlainBufferCell[];
   deleteMarker?: boolean;
 };
+
+const allowedPrimaryKeyTypes = new Set([
+  VariantType.INF_MIN,
+  VariantType.INF_MAX,
+  VariantType.AUTO_INCREMENT,
+  VariantType.INTEGER,
+  VariantType.STRING,
+  VariantType.BLOB,
+]);
+
+const allowedAttributeTypes = new Set([
+  VariantType.INTEGER,
+  VariantType.DOUBLE,
+  VariantType.BOOLEAN,
+  VariantType.STRING,
+  VariantType.BLOB,
+]);
 
 // Initialize CRC8 table
 const crc8Table = new Uint8Array(256);
@@ -134,7 +151,9 @@ function calculateCellLength(cell: PlainBufferCell): number {
   length += 1; // tag for cell name
   length += 4; // length of cell name
   length += new TextEncoder().encode(cell.name).length; // cell name
-  length += calculateCellValueLength(cell.type, cell.value); // cell value
+  if (cell.type !== undefined) {
+    length += calculateCellValueLength(cell.type, cell.value); // cell value
+  }
   if (cell.op !== undefined) {
     length += 1; // tag for cell type
     length += 1; // cell type
@@ -154,12 +173,17 @@ function calculateCellValueLength(
   let length = 1; // tag for cell value
   length += 4; // length of cell value
   switch (type) {
+    case VariantType.INF_MIN:
+    case VariantType.INF_MAX:
+    case VariantType.AUTO_INCREMENT:
+      length += 1;
+      break;
     case VariantType.INTEGER:
     case VariantType.DOUBLE:
-      length += 13;
+      length += 9;
       break;
     case VariantType.BOOLEAN:
-      length += 6;
+      length += 2;
       break;
     case VariantType.STRING:
       length += 5; // length of cell value
@@ -200,6 +224,9 @@ function encodeRow(
   // Write primary key
   offset = writeByte(writer, offset, TagType.ROW_PK);
   for (const pk of row.primaryKey) {
+    if (pk.type && !allowedPrimaryKeyTypes.has(pk.type)) {
+      throw new Error(`Invalid primary key type: ${pk.type}`);
+    }
     const c = encodeCell(writer, offset, pk);
     offset = c.newOffset;
     checksum = crc8(checksum, new Uint8Array([c.checksum]));
@@ -209,6 +236,9 @@ function encodeRow(
   if (row.attributes && row.attributes.length > 0) {
     offset = writeByte(writer, offset, TagType.ROW_ATTR);
     for (const attr of row.attributes) {
+      if (attr.type && !allowedAttributeTypes.has(attr.type)) {
+        throw new Error(`Invalid attribute type: ${attr.type}`);
+      }
       const c = encodeCell(writer, offset, attr);
       offset = c.newOffset;
       checksum = crc8(checksum, new Uint8Array([c.checksum]));
@@ -246,12 +276,14 @@ function encodeCell(
   checksum = crc8(checksum, nameBytes);
 
   // Write column value
-  const vstart = offset;
-  offset = encodeCellValue(writer, offset, cell.type, cell.value);
-  checksum = crc8(
-    checksum,
-    new Uint8Array(writer.buffer.slice(vstart + 5, offset))
-  );
+  if (cell.type !== undefined) {
+    const vstart = offset;
+    offset = encodeCellValue(writer, offset, cell.type, cell.value);
+    checksum = crc8(
+      checksum,
+      new Uint8Array(writer.buffer.slice(vstart + 5, offset))
+    );
+  }
 
   // Write column op (if any)
   if (cell.op !== undefined) {
@@ -286,6 +318,18 @@ function encodeCellValue(
   offset = writeByte(writer, offset, TagType.CELL_VALUE);
 
   switch (type) {
+    case VariantType.INF_MIN:
+      offset = writeRawLittleEndian32(writer, offset, 1);
+      offset = writeByte(writer, offset, VariantType.INF_MIN);
+      break;
+    case VariantType.INF_MAX:
+      offset = writeRawLittleEndian32(writer, offset, 1);
+      offset = writeByte(writer, offset, VariantType.INF_MAX);
+      break;
+    case VariantType.AUTO_INCREMENT:
+      offset = writeRawLittleEndian32(writer, offset, 1);
+      offset = writeByte(writer, offset, VariantType.AUTO_INCREMENT);
+      break;
     case VariantType.INTEGER:
       offset = writeRawLittleEndian32(writer, offset, 9);
       offset = writeByte(writer, offset, VariantType.INTEGER);
@@ -473,6 +517,12 @@ function decodeCellValue(bytes: Uint8Array): {
   offset += 1;
 
   switch (type) {
+    case VariantType.INF_MIN:
+      return { type, value: undefined };
+    case VariantType.INF_MAX:
+      return { type, value: undefined };
+    case VariantType.AUTO_INCREMENT:
+      return { type, value: undefined };
     case VariantType.STRING:
       const strLength = reader.getInt32(offset, true);
       offset += 4;
