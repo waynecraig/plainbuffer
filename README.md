@@ -34,3 +34,7 @@ https://help.aliyun.com/zh/tablestore/developer-reference/plainbuffer
 
   console.log(Buffer.from(encoded).toString("hex"))
 ```
+
+## 关于 BigInt 的处理
+
+PlainBuffer 中的 integer 类型是 64 位的，本项目中使用 JavaScript 中的 BigInt 类型来表示，详见 https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt
