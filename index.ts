@@ -350,13 +350,14 @@ function encodeCellValue(
       offset = writeByte(writer, offset, VariantType.BOOLEAN);
       offset = writeByte(writer, offset, value ? 1 : 0);
       break;
-    case VariantType.STRING:
+    case VariantType.STRING: {
       const bytes = new TextEncoder().encode(value as string);
       offset = writeRawLittleEndian32(writer, offset, 5 + bytes.length);
       offset = writeByte(writer, offset, VariantType.STRING);
       offset = writeRawLittleEndian32(writer, offset, bytes.length);
       offset = writeBytes(writer, offset, bytes);
       break;
+    }
     case VariantType.BLOB:
       offset = writeRawLittleEndian32(
         writer,
@@ -430,7 +431,7 @@ function decodeRow(
         row.deleteMarker = true;
         checksum = crc8(checksum, new Uint8Array([1]));
         break;
-      case TagType.ROW_CHECKSUM:
+      case TagType.ROW_CHECKSUM: {
         if (!row.deleteMarker) {
           checksum = crc8(checksum, new Uint8Array([0]));
         }
@@ -440,6 +441,7 @@ function decodeRow(
           throw new Error("Row checksum mismatch");
         }
         return { row, newOffset: offset };
+      }
       default:
         throw new Error(`Unexpected tag in row: ${tag}`);
     }
@@ -460,7 +462,7 @@ function decodeCell(
     let bytes: Uint8Array;
 
     switch (tag) {
-      case TagType.CELL_NAME:
+      case TagType.CELL_NAME: {
         const nameLength = reader.getInt32(offset, true);
         offset += 4;
         bytes = new Uint8Array(
@@ -470,7 +472,8 @@ function decodeCell(
         cell.name = new TextDecoder().decode(bytes);
         checksum = crc8(checksum, bytes);
         break;
-      case TagType.CELL_VALUE:
+      }
+      case TagType.CELL_VALUE: {
         const valueLength = reader.getInt32(offset, true);
         offset += 4;
         bytes = new Uint8Array(
@@ -482,6 +485,7 @@ function decodeCell(
         cell.type = type;
         cell.value = value;
         break;
+      }
       case TagType.CELL_OP:
         cell.op = reader.getUint8(offset);
         offset += 1;
@@ -492,7 +496,7 @@ function decodeCell(
         offset += 8;
         checksum = crc8(checksum, bytes);
         break;
-      case TagType.CELL_CHECKSUM:
+      case TagType.CELL_CHECKSUM: {
         // op is after ts in checksum calculation
         if (cell.op !== undefined) {
           checksum = crc8(checksum, new Uint8Array([cell.op]));
@@ -503,6 +507,7 @@ function decodeCell(
           throw new Error("Cell checksum mismatch");
         }
         return { cell, newOffset: offset, cellChecksum: checksum };
+      }
       default:
         throw new Error(`Unexpected tag in cell: ${tag}`);
     }
@@ -530,7 +535,7 @@ function decodeCellValue(bytes: Uint8Array): {
       return { type, value: undefined };
     case VariantType.AUTO_INCREMENT:
       return { type, value: undefined };
-    case VariantType.STRING:
+    case VariantType.STRING: {
       const strLength = reader.getInt32(offset, true);
       offset += 4;
       const value = new TextDecoder().decode(
@@ -538,19 +543,23 @@ function decodeCellValue(bytes: Uint8Array): {
       );
       offset += strLength;
       return { type, value };
-    case VariantType.INTEGER:
+    }
+    case VariantType.INTEGER: {
       const intValue = reader.getBigInt64(offset, true);
       offset += 8;
       return { type, value: intValue };
-    case VariantType.DOUBLE:
+    }
+    case VariantType.DOUBLE: {
       const doubleValue = reader.getFloat64(offset, true);
       offset += 8;
       return { type, value: doubleValue };
-    case VariantType.BOOLEAN:
+    }
+    case VariantType.BOOLEAN: {
       const boolValue = reader.getUint8(offset) !== 0;
       offset += 1;
       return { type, value: boolValue };
-    case VariantType.BLOB:
+    }
+    case VariantType.BLOB: {
       const blobLength = reader.getInt32(offset, true);
       offset += 4;
       const blobValue = new Uint8Array(
@@ -558,6 +567,7 @@ function decodeCellValue(bytes: Uint8Array): {
       );
       offset += blobLength;
       return { type, value: blobValue };
+    }
     default:
       throw new Error(`Unsupported variant type: ${type}`);
   }
