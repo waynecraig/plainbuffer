@@ -214,3 +214,24 @@ test("update delete row", () => {
 
   testEncodeDecode(data, hex);
 });
+
+test("example", () => {
+  const data: PlainBufferRow[] = [
+    {
+      primaryKey: [
+        { name: "pk1", type: VariantType.STRING, value: "iampk" },
+        { name: "pk2", type: VariantType.INTEGER, value: 100n },
+      ],
+      attributes: [
+        { name: "column1", type: VariantType.STRING, value: "bad", ts: 1001n },
+        { name: "column2", type: VariantType.INTEGER, value: 128n, ts: 1002n },
+        { name: "column3", type: VariantType.DOUBLE, value: 34.2, ts: 1003n },
+        { name: "column4", op: CellOp.DeleteAllVersions },
+      ],
+    },
+  ];
+  const hex =
+    "7500000001030403000000706b31050a000000030500000069616d706b0a98030403000000706b3205090000000064000000000000000a0502030407000000636f6c756d6e310508000000030300000062616407e9030000000000000a30030407000000636f6c756d6e32050900000000800000000000000007ea030000000000000a69030407000000636f6c756d6e330509000000019a9999999919414007eb030000000000000acf030407000000636f6c756d6e3406010aa70922";
+
+  testEncodeDecode(data, hex);
+});
