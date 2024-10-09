@@ -26,8 +26,9 @@ enum VariantType {
 }
 
 enum CellOp {
-  DeleteAllVersion = 0x01,
+  DeleteAllVersions = 0x01,
   DeleteOneVersion = 0x03,
+  Increment = 0x4,
 }
 
 type PlainBufferCell = {
@@ -289,7 +290,6 @@ function encodeCell(
   if (cell.op !== undefined) {
     offset = writeByte(writer, offset, TagType.CELL_OP);
     offset = writeByte(writer, offset, cell.op);
-    checksum = crc8(checksum, new Uint8Array([cell.op]));
   }
 
   // Write timestamp (if any)
@@ -300,6 +300,11 @@ function encodeCell(
       checksum,
       new Uint8Array(writer.buffer.slice(offset - 8, offset))
     );
+  }
+
+  // op is after ts in checksum calculation
+  if (cell.op !== undefined) {
+    checksum = crc8(checksum, new Uint8Array([cell.op]));
   }
 
   // Write checksum
@@ -479,9 +484,7 @@ function decodeCell(
         break;
       case TagType.CELL_OP:
         cell.op = reader.getUint8(offset);
-        bytes = new Uint8Array(reader.buffer.slice(offset, offset + 1));
         offset += 1;
-        checksum = crc8(checksum, bytes);
         break;
       case TagType.CELL_TS:
         cell.ts = reader.getBigInt64(offset, true);
@@ -490,6 +493,10 @@ function decodeCell(
         checksum = crc8(checksum, bytes);
         break;
       case TagType.CELL_CHECKSUM:
+        // op is after ts in checksum calculation
+        if (cell.op !== undefined) {
+          checksum = crc8(checksum, new Uint8Array([cell.op]));
+        }
         const _checksum = reader.getUint8(offset);
         offset += 1;
         if (_checksum !== checksum) {
