@@ -1,7 +1,7 @@
 {
   "name": "plainbuffer",
   "version": "1.0.1",
-  "description": "",
+  "description": "A TypeScript Library for Working with the Alibaba Cloud Tablestore PlainBuffer Protocol",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
