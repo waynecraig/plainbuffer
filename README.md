@@ -31,9 +31,9 @@ const data: PlainBufferRow[] = [
       { name: "pk2", type: VariantType.INTEGER, value: 100n },
     ],
     attributes: [
-      { name: "column1", type: VariantType.STRING, value: "bad", ts: 1001n },
-      { name: "column2", type: VariantType.INTEGER, value: 128n, ts: 1002n },
-      { name: "column3", type: VariantType.DOUBLE, value: 34.2, ts: 1003n },
+      { name: "column1", type: VariantType.STRING, value: "bad", ts: 1001 },
+      { name: "column2", type: VariantType.INTEGER, value: 128n, ts: 1002 },
+      { name: "column3", type: VariantType.DOUBLE, value: 34.2, ts: 1003 },
       { name: "column4", op: CellOp.DeleteAllVersions },
     ],
   },
@@ -94,3 +94,5 @@ console.log(JSON.stringify(decoded, null, 4));
 PlainBuffer 中的 integer 类型是 64 位的，本项目中使用 JavaScript 中的 BigInt 类型来表示，详见 https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt
 
 为了支持 BigInt，使用 TypeScript 时，target 需要设置为 es2020 以上。
+
+字段的时间戳虽然也是64位，但是没有必要用 BigInt，用普通的 Number 类型即可。

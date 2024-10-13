@@ -36,7 +36,7 @@ type PlainBufferCell = {
   type?: VariantType;
   value?: bigint | number | boolean | string | Uint8Array;
   op?: CellOp;
-  ts?: bigint;
+  ts?: number; // number is enough for timestamp, no need for bigint
 };
 
 type PlainBufferRow = {
@@ -491,7 +491,7 @@ function decodeCell(
         offset += 1;
         break;
       case TagType.CELL_TS:
-        cell.ts = reader.getBigInt64(offset, true);
+        cell.ts = Number(reader.getBigInt64(offset, true));
         bytes = new Uint8Array(reader.buffer.slice(offset, offset + 8));
         offset += 8;
         checksum = crc8(checksum, bytes);

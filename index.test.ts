@@ -110,7 +110,7 @@ test("4 pks, 4 attr", () => {
           name: "remark",
           value: "Hello",
           type: VariantType.STRING,
-          ts: 1728143341651n,
+          ts: 1728143341651,
         },
       ],
     },
@@ -173,7 +173,7 @@ test("update delete", () => {
         { name: "area", value: "a1", type: VariantType.STRING },
         { name: "id", value: 2n, type: VariantType.INTEGER },
       ],
-      attributes: [{ name: "score", ts: 1234n, op: CellOp.DeleteOneVersion }],
+      attributes: [{ name: "score", ts: 1234, op: CellOp.DeleteOneVersion }],
     },
   ];
   const hex =
@@ -223,9 +223,9 @@ test("example", () => {
         { name: "pk2", type: VariantType.INTEGER, value: 100n },
       ],
       attributes: [
-        { name: "column1", type: VariantType.STRING, value: "bad", ts: 1001n },
-        { name: "column2", type: VariantType.INTEGER, value: 128n, ts: 1002n },
-        { name: "column3", type: VariantType.DOUBLE, value: 34.2, ts: 1003n },
+        { name: "column1", type: VariantType.STRING, value: "bad", ts: 1001 },
+        { name: "column2", type: VariantType.INTEGER, value: 128n, ts: 1002 },
+        { name: "column3", type: VariantType.DOUBLE, value: 34.2, ts: 1003 },
         { name: "column4", op: CellOp.DeleteAllVersions },
       ],
     },
