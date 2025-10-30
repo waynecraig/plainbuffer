@@ -79,7 +79,7 @@ for (let i = 0; i < 256; i++) {
 // CRC8 calculation function
 function crc8(crc: number, data: Uint8Array): number {
   for (const byte of data) {
-    crc = crc8Table[(crc ^ byte) & 0xff];
+    crc = crc8Table[(crc ^ byte) & 0xff] as number;
   }
   return crc;
 }
@@ -119,7 +119,7 @@ function writeBytes(
   value: Uint8Array
 ): number {
   for (let i = 0; i < value.length; i++) {
-    writer.setUint8(offset + i, value[i]);
+    writer.setUint8(offset + i, value[i] as number);
   }
   return offset + value.length;
 }
@@ -171,31 +171,9 @@ function calculateCellValueLength(
   type: PlainBufferCell["type"],
   value: PlainBufferCell["value"]
 ): number {
-  let length = 1; // tag for cell value
-  length += 4; // length of cell value
-  switch (type) {
-    case VariantType.INF_MIN:
-    case VariantType.INF_MAX:
-    case VariantType.AUTO_INCREMENT:
-      length += 1;
-      break;
-    case VariantType.INTEGER:
-    case VariantType.DOUBLE:
-      length += 9;
-      break;
-    case VariantType.BOOLEAN:
-      length += 2;
-      break;
-    case VariantType.STRING:
-      length += 5; // length of cell value
-      length += new TextEncoder().encode(value as string).length;
-      break;
-    case VariantType.BLOB:
-      length += 5; // length of cell value
-      length += (value as Uint8Array).length;
-      break;
-  }
-  return length;
+  // CELL_VALUE tag(1) + length_prefix(4) + (type_tag + value_data)
+  // type! is safe here because this function is only called when type !== undefined
+  return 1 + 4 + calculateValueLength(type!, value);
 }
 
 // encoding function
@@ -320,59 +298,16 @@ function encodeCellValue(
   type: PlainBufferCell["type"],
   value: PlainBufferCell["value"]
 ): number {
+  // Write CELL_VALUE tag
   offset = writeByte(writer, offset, TagType.CELL_VALUE);
 
-  switch (type) {
-    case VariantType.INF_MIN:
-      offset = writeRawLittleEndian32(writer, offset, 1);
-      offset = writeByte(writer, offset, VariantType.INF_MIN);
-      break;
-    case VariantType.INF_MAX:
-      offset = writeRawLittleEndian32(writer, offset, 1);
-      offset = writeByte(writer, offset, VariantType.INF_MAX);
-      break;
-    case VariantType.AUTO_INCREMENT:
-      offset = writeRawLittleEndian32(writer, offset, 1);
-      offset = writeByte(writer, offset, VariantType.AUTO_INCREMENT);
-      break;
-    case VariantType.INTEGER:
-      offset = writeRawLittleEndian32(writer, offset, 9);
-      offset = writeByte(writer, offset, VariantType.INTEGER);
-      offset = writeRawLittleEndian64(writer, offset, BigInt(value as bigint));
-      break;
-    case VariantType.DOUBLE:
-      offset = writeRawLittleEndian32(writer, offset, 9);
-      offset = writeByte(writer, offset, VariantType.DOUBLE);
-      offset = writeDouble(writer, offset, value as number);
-      break;
-    case VariantType.BOOLEAN:
-      offset = writeRawLittleEndian32(writer, offset, 2);
-      offset = writeByte(writer, offset, VariantType.BOOLEAN);
-      offset = writeByte(writer, offset, value ? 1 : 0);
-      break;
-    case VariantType.STRING: {
-      const bytes = new TextEncoder().encode(value as string);
-      offset = writeRawLittleEndian32(writer, offset, 5 + bytes.length);
-      offset = writeByte(writer, offset, VariantType.STRING);
-      offset = writeRawLittleEndian32(writer, offset, bytes.length);
-      offset = writeBytes(writer, offset, bytes);
-      break;
-    }
-    case VariantType.BLOB:
-      offset = writeRawLittleEndian32(
-        writer,
-        offset,
-        5 + (value as Uint8Array).length
-      );
-      offset = writeByte(writer, offset, VariantType.BLOB);
-      offset = writeRawLittleEndian32(
-        writer,
-        offset,
-        (value as Uint8Array).length
-      );
-      offset = writeBytes(writer, offset, value as Uint8Array);
-      break;
-  }
+  // Calculate and write outer length (type_tag + value_data)
+  // type! is safe here because this function is only called when type !== undefined
+  const valueLength = calculateValueLength(type!, value);
+  offset = writeRawLittleEndian32(writer, offset, valueLength);
+
+  // Reuse core logic: write type tag + value data
+  offset = writeRawValue(writer, offset, type!, value);
 
   return offset;
 }
@@ -573,12 +508,144 @@ function decodeCellValue(bytes: Uint8Array): {
   }
 }
 
+// Type inference for encodeColumnValue
+function inferVariantType(value: unknown): {
+  type: VariantType;
+  processedValue: PlainBufferCell["value"];
+} {
+  if (value === null || value === undefined) {
+    return { type: VariantType.NULL, processedValue: undefined };
+  }
+  if (typeof value === "bigint") {
+    return { type: VariantType.INTEGER, processedValue: value };
+  }
+  if (typeof value === "number") {
+    return { type: VariantType.DOUBLE, processedValue: value };
+  }
+  if (typeof value === "boolean") {
+    return { type: VariantType.BOOLEAN, processedValue: value };
+  }
+  if (typeof value === "string") {
+    return { type: VariantType.STRING, processedValue: value };
+  }
+  if (value instanceof Uint8Array) {
+    return { type: VariantType.BLOB, processedValue: value };
+  }
+  throw new Error(`Unsupported value type: ${typeof value}`);
+}
+
+// Calculate the byte length of a value for encodeColumnValue
+function calculateValueLength(
+  type: VariantType,
+  value: PlainBufferCell["value"]
+): number {
+  switch (type) {
+    case VariantType.NULL:
+    case VariantType.INF_MIN:
+    case VariantType.INF_MAX:
+    case VariantType.AUTO_INCREMENT:
+      return 1; // Only type tag
+    case VariantType.INTEGER:
+    case VariantType.DOUBLE:
+      return 9; // type(1) + value(8)
+    case VariantType.BOOLEAN:
+      return 2; // type(1) + value(1)
+    case VariantType.STRING:
+      return 5 + new TextEncoder().encode(value as string).length; // type(1) + length(4) + bytes
+    case VariantType.BLOB:
+      return 5 + (value as Uint8Array).length; // type(1) + length(4) + bytes
+    default:
+      throw new Error(`Unknown variant type: ${type}`);
+  }
+}
+
+// Write raw value (type tag + value data) without CELL_VALUE tag and outer length prefix
+function writeRawValue(
+  writer: DataView,
+  offset: number,
+  type: VariantType,
+  value: PlainBufferCell["value"]
+): number {
+  // Write type tag
+  offset = writeByte(writer, offset, type);
+
+  // Write value based on type
+  switch (type) {
+    case VariantType.NULL:
+    case VariantType.INF_MIN:
+    case VariantType.INF_MAX:
+    case VariantType.AUTO_INCREMENT:
+      // Only type tag, no value
+      break;
+    case VariantType.INTEGER:
+      offset = writeRawLittleEndian64(writer, offset, value as bigint);
+      break;
+    case VariantType.DOUBLE:
+      offset = writeDouble(writer, offset, value as number);
+      break;
+    case VariantType.BOOLEAN:
+      offset = writeByte(writer, offset, value ? 1 : 0);
+      break;
+    case VariantType.STRING: {
+      const bytes = new TextEncoder().encode(value as string);
+      offset = writeRawLittleEndian32(writer, offset, bytes.length);
+      offset = writeBytes(writer, offset, bytes);
+      break;
+    }
+    case VariantType.BLOB:
+      offset = writeRawLittleEndian32(
+        writer,
+        offset,
+        (value as Uint8Array).length
+      );
+      offset = writeBytes(writer, offset, value as Uint8Array);
+      break;
+  }
+
+  return offset;
+}
+
+/**
+ * Encode a single column value to PlainBuffer format.
+ * This is similar to Alibaba's TableStore.PlainBufferBuilder.serializeColumnValue().
+ *
+ * Type inference rules (following Alibaba's official implementation):
+ * - bigint → INTEGER (VT_INTEGER: 0x0)
+ * - number → DOUBLE (VT_DOUBLE: 0x1)
+ * - boolean → BOOLEAN (VT_BOOLEAN: 0x2)
+ * - string → STRING (VT_STRING: 0x3)
+ * - Uint8Array → BLOB (VT_BLOB: 0x7)
+ * - null/undefined → NULL (VT_NULL: 0x6)
+ *
+ * @param value - The value to encode
+ * @returns Uint8Array containing the encoded value
+ *
+ * @example
+ * ```typescript
+ * encodeColumnValue("hello")
+ * // Returns: Uint8Array [0x03, 0x05, 0x00, 0x00, 0x00, 0x68, 0x65, 0x6c, 0x6c, 0x6f]
+ * // Hex: 030500000068656c6c6f
+ * ```
+ */
+function encodeColumnValue(value: unknown): Uint8Array {
+  const { type, processedValue } = inferVariantType(value);
+  const length = calculateValueLength(type, processedValue);
+
+  const buffer = new ArrayBuffer(length);
+  const writer = new DataView(buffer);
+
+  writeRawValue(writer, 0, type, processedValue);
+
+  return new Uint8Array(buffer);
+}
+
 export {
   encodePlainBuffer,
   decodePlainBuffer,
+  encodeColumnValue,
   TagType,
   VariantType,
-  PlainBufferRow,
-  PlainBufferCell,
+  type PlainBufferRow,
+  type PlainBufferCell,
   CellOp,
 };

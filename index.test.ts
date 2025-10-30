@@ -1,6 +1,7 @@
 import {
   CellOp,
   decodePlainBuffer,
+  encodeColumnValue,
   encodePlainBuffer,
   PlainBufferRow,
   VariantType,
@@ -213,6 +214,18 @@ test("update delete row", () => {
     "7500000001030404000000617265610507000000030200000061310a6b030402000000696405090000000002000000000000000a3f080914";
 
   testEncodeDecode(data, hex);
+});
+
+test.each([
+  ["string", "hello", new Uint8Array([0x03, 0x05, 0x00, 0x00, 0x00, 0x68, 0x65, 0x6c, 0x6c, 0x6f])],
+  ["double", 1.6, new Uint8Array([0x01, 0x9a, 0x99, 0x99, 0x99, 0x99, 0x99, 0xf9, 0x3f])],
+  ["bigint", BigInt(10), new Uint8Array([0x00, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])],
+  ["boolean", true, new Uint8Array([0x02, 0x01])],
+  ["blob", new Uint8Array([1, 2, 3]), new Uint8Array([0x07, 0x03, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03])],
+  ["buffer", Buffer.from([1,2,3]), new Uint8Array([0x07, 0x03, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03])],
+])("encode column value %s", (_type, input, expected) => {
+  const data = encodeColumnValue(input);
+  expect(data).toEqual(expected);
 });
 
 test("example", () => {
